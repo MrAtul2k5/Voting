@@ -12,14 +12,29 @@ const jwt = require("jsonwebtoken");
 const User = require("./model/User");
 
 const app = express();
-const allowedOrigins = (process.env.CORS_ORIGINS || "").split(",").map((origin) => origin.trim().replace(/\/$/, "")).filter(Boolean);
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "https://voting-appp.vercel.app",
+];
 
-app.use(cors({
+const normalizeOrigin = (origin) =>
+  origin.trim().replace(/^["'\[]+|["'\]]+$/g, "").replace(/\/$/, "");
+
+// Supports a normal comma-separated value as well as a JSON-like value copied
+// from an array, e.g. ["https://site-a.com", "https://site-b.com"].
+const configuredOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
+
+const corsOptions = {
   origin: (origin, callback) => {
+    // Requests without an Origin header (health checks, curl, same-origin) are safe.
     if (!origin) return callback(null, true);
-    const normalizedOrigin = origin.replace(/\/$/, "");
-    if (!allowedOrigins.length || allowedOrigins.includes(normalizedOrigin)) {
-      return callback(null, normalizedOrigin);
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (allowedOrigins.has(normalizedOrigin)) {
+      return callback(null, true);
     }
     return callback(new Error("CORS policy: Origin not allowed"));
   },
@@ -28,7 +43,11 @@ app.use(cors({
   credentials: true,
   preflightContinue: false,
   optionsSuccessStatus: 204
-}));
+};
+
+app.use(cors(corsOptions));
+// Explicitly register every API preflight for serverless deployments too.
+app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 
 const MONGO_URI = process.env.MONGO_URI;
