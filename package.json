@@ -1,0 +1,24 @@
+{
+  "name": "voting-app",
+  "description": "A full-stack voting application",
+  "scripts": {
+    "install-all": "npm install && cd backend && npm install && cd ../client-project && npm install",
+    "dev": "concurrently \"npm -C backend run dev\" \"npm -C client-project run dev\"",
+    "start": "npm -C backend start"
+  },
+  "keywords": [
+    "voting",
+    "polls",
+    "react",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0"
+  }
+}
