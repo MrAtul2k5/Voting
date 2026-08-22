@@ -91,6 +91,15 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
+const formatLastUpdated = (value) => {
+  if (!value) return "Waiting for data";
+  return `Updated ${new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(value)}`;
+};
+
 const formatTimeLeft = (expiryTime, now) => {
   const expiresAt = new Date(expiryTime).getTime();
   if (Number.isNaN(expiresAt)) return "No timer";
@@ -119,6 +128,8 @@ const getWinnerText = (poll) => {
 export default function PollList({ user, onLogout }) {
   const [polls, setPolls] = useState([]);
   const [loadingPolls, setLoadingPolls] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [now, setNow] = useState(0);
   const [activePage, setActivePage] = useState(getInitialPage);
   const [pollFilter, setPollFilter] = useState("all");
@@ -127,15 +138,19 @@ export default function PollList({ user, onLogout }) {
   const [votingPollId, setVotingPollId] = useState(null);
   const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "";
 
-  const fetchPolls = useCallback(async () => {
+  const fetchPolls = useCallback(async ({ showLoader = true, notify = false } = {}) => {
     try {
-      setLoadingPolls(true);
+      if (showLoader) setLoadingPolls(true);
+      else setIsRefreshing(true);
       const res = await axios.get(`${API_URL}/api/polls`);
       setPolls(Array.isArray(res.data) ? res.data : []);
+      setLastUpdated(Date.now());
+      if (notify) toast.success("Polls are up to date", { id: "refresh" });
     } catch {
-      toast.error("Failed to load polls");
+      toast.error("Failed to load polls", { id: "refresh" });
     } finally {
-      setLoadingPolls(false);
+      if (showLoader) setLoadingPolls(false);
+      else setIsRefreshing(false);
     }
   }, [API_URL]);
 
@@ -155,6 +170,22 @@ export default function PollList({ user, onLogout }) {
     }, 0);
 
     return () => window.clearTimeout(timeout);
+  }, [fetchPolls]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") fetchPolls({ showLoader: false });
+    };
+    const interval = window.setInterval(
+      () => fetchPolls({ showLoader: false }),
+      30_000
+    );
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [fetchPolls]);
 
   useEffect(() => {
@@ -279,6 +310,8 @@ export default function PollList({ user, onLogout }) {
     toast.success("Local vote history cleared");
   };
 
+  const handleRefresh = () => fetchPolls({ showLoader: false, notify: true });
+
   const copy = pageCopy[activePage] || pageCopy.overview;
 
   return (
@@ -367,11 +400,11 @@ export default function PollList({ user, onLogout }) {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={fetchPolls}
+                  onClick={handleRefresh}
                   className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-4 text-sm font-bold text-slate-300 transition hover:border-cyan-300/40 hover:text-cyan-100"
                 >
-                  <FaSyncAlt className={loadingPolls ? "animate-spin" : ""} />
-                  Refresh
+                  <FaSyncAlt className={isRefreshing ? "animate-spin" : ""} />
+                  {isRefreshing ? "Syncing" : "Refresh"}
                 </button>
                 <button
                   type="button"
@@ -382,6 +415,10 @@ export default function PollList({ user, onLogout }) {
                   Create
                 </button>
               </div>
+              <p aria-live="polite" className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
+                <span className={`h-2 w-2 rounded-full ${isRefreshing ? "bg-cyan-300 animate-pulse" : "bg-emerald-300"}`} />
+                {isRefreshing ? "Syncing latest votes…" : formatLastUpdated(lastUpdated)}
+              </p>
             </div>
           </header>
 
@@ -432,7 +469,7 @@ export default function PollList({ user, onLogout }) {
                 stats={stats}
                 voteHistory={voteHistory}
                 clearLocalVotes={clearLocalVotes}
-                refreshPolls={fetchPolls}
+                refreshPolls={handleRefresh}
               />
             )}
           </main>
@@ -500,11 +537,11 @@ function OverviewPage({
           />
         )}
 
-        <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+        <div className="interactive-card relative min-h-[360px] overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
           <img
             src={heroImage}
             alt="Voting analytics visual"
-            className="absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-screen"
+            className="hero-art absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-screen"
           />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,7,12,0.34),rgba(5,7,12,0.96))]" />
           <div className="relative flex h-full flex-col justify-end p-5 sm:p-6">

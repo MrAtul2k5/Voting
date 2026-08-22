@@ -39,7 +39,7 @@ const Signup = ({ switchToLogin }) => {
         <img
           src={heroImage}
           alt="Voting dashboard visual"
-          className="absolute inset-0 h-full w-full object-cover opacity-35 mix-blend-screen"
+          className="hero-art absolute inset-0 h-full w-full object-cover opacity-35 mix-blend-screen"
         />
         <div className="absolute inset-0 bg-[linear-gradient(240deg,rgba(5,7,12,0.88),rgba(5,7,12,0.48),rgba(5,7,12,0.94))]" />
         <div className="relative z-10 flex h-full flex-col justify-between p-12">
