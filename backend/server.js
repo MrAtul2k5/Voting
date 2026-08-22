@@ -13,7 +13,6 @@ const User = require("./model/User");
 
 const app = express();
 const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:5173",
   "https://voting-appp.vercel.app",
 ];
 
