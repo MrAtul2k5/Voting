@@ -124,6 +124,7 @@ export default function PollList({ user, onLogout }) {
   const [pollFilter, setPollFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [storedVotes, setStoredVotes] = useState(readStoredVotes);
+  const [votingPollId, setVotingPollId] = useState(null);
   const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "";
 
   const fetchPolls = useCallback(async () => {
@@ -251,8 +252,10 @@ export default function PollList({ user, onLogout }) {
   const vote = async (pollId, index, expired) => {
     if (expired) return toast.error("Poll closed");
     if (storedVotes[pollId] !== undefined) return toast.error("Already voted");
+    if (votingPollId) return;
 
     try {
+      setVotingPollId(pollId);
       await axios.post(`${API_URL}/api/polls/${pollId}/vote`, {
         optionIndex: index,
         userId: user.id,
@@ -265,6 +268,8 @@ export default function PollList({ user, onLogout }) {
       fetchPolls();
     } catch (err) {
       toast.error(err.response?.data?.message || "Voting failed");
+    } finally {
+      setVotingPollId(null);
     }
   };
 
@@ -279,6 +284,8 @@ export default function PollList({ user, onLogout }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#05070c] text-slate-100">
       <div className="app-grid-bg" />
+      <div className="ambient-orb ambient-orb-one" />
+      <div className="ambient-orb ambient-orb-two" />
 
       <div className="relative z-10 grid min-h-screen lg:grid-cols-[280px_1fr]">
         <aside className="border-b border-slate-800/80 bg-slate-950/76 backdrop-blur-xl lg:border-b-0 lg:border-r">
@@ -378,7 +385,7 @@ export default function PollList({ user, onLogout }) {
             </div>
           </header>
 
-          <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main key={activePage} className="page-enter mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {activePage === "overview" && (
               <OverviewPage
                 stats={stats}
@@ -389,6 +396,7 @@ export default function PollList({ user, onLogout }) {
                 navigate={navigate}
                 now={now}
                 loading={loadingPolls}
+                votingPollId={votingPollId}
               />
             )}
 
@@ -403,6 +411,7 @@ export default function PollList({ user, onLogout }) {
                 now={now}
                 loading={loadingPolls}
                 navigate={navigate}
+                votingPollId={votingPollId}
               />
             )}
 
@@ -442,6 +451,7 @@ function OverviewPage({
   navigate,
   now,
   loading,
+  votingPollId,
 }) {
   if (loading) return <SkeletonGrid />;
 
@@ -480,7 +490,7 @@ function OverviewPage({
 
       <section className="grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
         {featuredPoll ? (
-          <PollCard poll={featuredPoll} vote={vote} now={now} featured />
+          <PollCard poll={featuredPoll} vote={vote} now={now} featured votingPollId={votingPollId} />
         ) : (
           <EmptyState
             title="No active polls"
@@ -549,6 +559,7 @@ function PollsPage({
   now,
   loading,
   navigate,
+  votingPollId,
 }) {
   return (
     <div className="space-y-5">
@@ -587,7 +598,7 @@ function PollsPage({
       ) : polls.length ? (
         <section className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
           {polls.map((poll) => (
-            <PollCard key={poll._id} poll={poll} vote={vote} now={now} />
+            <PollCard key={poll._id} poll={poll} vote={vote} now={now} votingPollId={votingPollId} />
           ))}
         </section>
       ) : (
@@ -741,12 +752,12 @@ function AccountPage({ user, stats, voteHistory, clearLocalVotes, refreshPolls }
   );
 }
 
-function PollCard({ poll, vote, now, featured = false }) {
+function PollCard({ poll, vote, now, featured = false, votingPollId }) {
   const winner = poll.expired ? getWinnerText(poll) : null;
 
   return (
     <article
-      className={`rounded-lg border border-slate-800 bg-slate-950/72 p-5 shadow-2xl shadow-black/20 ${
+      className={`interactive-card rounded-lg border border-slate-800 bg-slate-950/72 p-5 shadow-2xl shadow-black/20 ${
         featured ? "min-h-[360px]" : ""
       }`}
     >
@@ -779,7 +790,8 @@ function PollCard({ poll, vote, now, featured = false }) {
             ? Math.round((Number(option.votes || 0) / poll.totalVotes) * 100)
             : 0;
           const selected = poll.userVote === index;
-          const locked = poll.expired || poll.userVote !== undefined;
+          const submitting = votingPollId === poll._id;
+          const locked = poll.expired || poll.userVote !== undefined || Boolean(votingPollId);
 
           return (
             <div key={`${poll._id}-${option.text}-${index}`}>
@@ -797,8 +809,8 @@ function PollCard({ poll, vote, now, featured = false }) {
               >
                 <span className="min-w-0 truncate">{option.text}</span>
                 <span className="inline-flex shrink-0 items-center gap-2 text-xs">
-                  {selected && <FaCheckCircle />}
-                  {Number(option.votes || 0)}
+                  {submitting ? <FaSyncAlt className="animate-spin" /> : selected && <FaCheckCircle />}
+                  {!submitting && Number(option.votes || 0)}
                 </span>
               </button>
               <div className="mt-2">
@@ -821,7 +833,7 @@ function StatTile({ icon, label, value, detail, tone }) {
   };
 
   return (
-    <article className="rounded-lg border border-slate-800 bg-slate-950/72 p-5">
+    <article className="interactive-card stagger-in rounded-lg border border-slate-800 bg-slate-950/72 p-5">
       <div
         className={`mb-5 grid h-11 w-11 place-items-center rounded-lg border ${
           tones[tone] || tones.cyan

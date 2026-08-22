@@ -27,6 +27,8 @@ export default function CreatePoll({ refreshPolls, onClose }) {
   const [minDateTime] = useState(createMinDateTime);
   const [loading, setLoading] = useState(false);
   const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "";
+  const questionLength = question.trim().length;
+  const filledOptions = options.filter((option) => option.trim()).length;
 
   const handleSubmit = async (event) => {
     event?.preventDefault();
@@ -36,6 +38,11 @@ export default function CreatePoll({ refreshPolls, onClose }) {
 
     if (new Date() >= new Date(expiryTime)) {
       return toast.error("End time must be in the future");
+    }
+
+    const normalizedOptions = options.map((option) => option.trim().toLowerCase());
+    if (new Set(normalizedOptions).size !== normalizedOptions.length) {
+      return toast.error("Each option needs a unique name");
     }
 
     try {
@@ -72,7 +79,7 @@ export default function CreatePoll({ refreshPolls, onClose }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="w-full rounded-lg border border-slate-800 bg-slate-950/72 p-5 shadow-2xl shadow-black/20 sm:p-6"
+      className="interactive-card w-full rounded-lg border border-slate-800 bg-slate-950/72 p-5 shadow-2xl shadow-black/20 sm:p-6"
     >
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -110,8 +117,13 @@ export default function CreatePoll({ refreshPolls, onClose }) {
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="What should the team decide?"
               rows={5}
+              maxLength={180}
               className="w-full resize-none rounded-lg border border-slate-800 bg-[#070a12] p-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/10"
             />
+            <span className="mt-2 flex justify-between text-xs text-slate-500">
+              <span>Make it focused and easy to answer.</span>
+              <span>{questionLength}/180</span>
+            </span>
           </label>
 
           <label className="block">
@@ -140,7 +152,7 @@ export default function CreatePoll({ refreshPolls, onClose }) {
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-bold text-slate-200 transition hover:border-cyan-300/60 hover:text-cyan-100"
             >
               <FaPlus />
-              Add
+              Add option ({options.length}/4)
             </button>
           </div>
 
@@ -170,6 +182,12 @@ export default function CreatePoll({ refreshPolls, onClose }) {
               </button>
             </div>
           ))}
+
+          <div className="rounded-lg border border-slate-800/80 bg-slate-900/50 px-4 py-3 text-xs text-slate-400">
+            <span className="font-bold text-slate-200">Ready check:</span>{" "}
+            {questionLength ? "question added" : "add a question"} · {filledOptions}/
+            {options.length} options filled · {expiryTime ? "close time set" : "set a close time"}
+          </div>
 
           <button
             type="submit"
