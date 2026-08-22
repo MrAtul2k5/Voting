@@ -1,6 +1,3 @@
-const dns = require("dns");
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
-
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
@@ -48,31 +45,60 @@ app.use(cors(corsOptions));
 // Explicitly register every API preflight for serverless deployments too.
 app.options(/.*/, cors(corsOptions));
 app.use(express.json());
+app.set("trust proxy", 1);
 
 const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET || "career_nav_secret";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+let databaseConnection;
 
 if (!MONGO_URI) {
   console.error(
-    "DB Error: Missing MONGO_URI. Create backend/.env from backend/.env.example and set MONGO_URI to your MongoDB connection string."
+    "DB Error: Missing MONGO_URI. Add it to your Vercel backend environment variables."
   );
-  process.exit(1);
 }
 
-//  MongoDB Atlas Connection
-mongoose
-  .connect(MONGO_URI)
-  .then(() => console.log("MongoDB Atlas Connected"))
-  .catch((err) => console.log(" DB Error:", err));
+const connectDatabase = async () => {
+  if (!MONGO_URI) throw new Error("Database configuration is missing");
+  if (mongoose.connection.readyState === 1) return;
+
+  if (!databaseConnection) {
+    databaseConnection = mongoose
+      .connect(MONGO_URI, { serverSelectionTimeoutMS: 8_000 })
+      .then(() => console.log("MongoDB Atlas Connected"))
+      .catch((error) => {
+        databaseConnection = null;
+        throw error;
+      });
+  }
+
+  await databaseConnection;
+};
+
+if (MONGO_URI) {
+  connectDatabase().catch((error) => console.error("DB Error:", error.message));
+}
 
 const normalizeEmail = (email) =>
   typeof email === "string" ? email.trim().toLowerCase() : "";
 
-const isDatabaseConnected = () => mongoose.connection.readyState === 1;
+app.get("/api/health", (_req, res) => {
+  const databaseReady = mongoose.connection.readyState === 1;
+  res.status(databaseReady ? 200 : 503).json({
+    status: databaseReady ? "ok" : "starting",
+    database: databaseReady ? "connected" : "unavailable",
+  });
+});
 
-
-
+app.use("/api", async (_req, res, next) => {
+  try {
+    await connectDatabase();
+    next();
+  } catch (error) {
+    console.error("Database unavailable:", error.message);
+    res.status(503).json({ message: "Database unavailable. Try again in a moment." });
+  }
+});
 
 
 app.post("/api/auth/register", async (req, res) => {
@@ -90,10 +116,6 @@ app.post("/api/auth/register", async (req, res) => {
 
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
-
-    if (!isDatabaseConnected()) {
-      return res.status(503).json({ message: "Database unavailable. Try again in a moment." });
     }
 
     const existingUser = await User.findOne({ email: normalizedEmail });
@@ -121,10 +143,6 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (!normalizedEmail || typeof password !== "string" || !password) {
       return res.status(400).json({ message: "Enter email and password" });
-    }
-
-    if (!isDatabaseConnected()) {
-      return res.status(503).json({ message: "Database unavailable. Try again in a moment." });
     }
 
     const user = await User.findOne({ email: normalizedEmail });
@@ -183,13 +201,21 @@ app.post("/api/polls", async (req, res) => {
   try {
     const { question, options, expiryTime } = req.body;
 
-    if (!question || options.length < 2 || options.length > 4) {
+    if (
+      typeof question !== "string" ||
+      !Array.isArray(options) ||
+      options.length < 2 ||
+      options.length > 4 ||
+      options.some((option) => typeof option !== "string" || !option.trim()) ||
+      Number.isNaN(new Date(expiryTime).getTime()) ||
+      new Date(expiryTime) <= new Date()
+    ) {
       return res.status(400).json({ message: "Invalid data" });
     }
 
     const poll = new Poll({
-      question,
-      options: options.map((o) => ({ text: o })),
+      question: question.trim(),
+      options: options.map((option) => ({ text: option.trim() })),
       expiryTime,
     });
 
@@ -215,10 +241,18 @@ app.get("/api/polls", async (req, res) => {
 // VOTE
 app.post("/api/polls/:id/vote", async (req, res) => {
   try {
-    const { optionIndex, userId } = req.body; 
+    const { optionIndex, userId } = req.body;
+
+    if (!Number.isInteger(optionIndex)) {
+      return res.status(400).json({ message: "Choose a valid option" });
+    }
 
     const poll = await Poll.findById(req.params.id);
     if (!poll) return res.status(404).json({ message: "Poll not found" });
+
+    if (optionIndex < 0 || optionIndex >= poll.options.length) {
+      return res.status(400).json({ message: "Choose a valid option" });
+    }
 
    
     if (new Date() > new Date(poll.expiryTime)) {
